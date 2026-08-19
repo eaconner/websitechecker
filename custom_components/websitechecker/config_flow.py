@@ -27,9 +27,9 @@ class WebsiteCheckerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
-        return WebsiteCheckerOptionsFlowHandler(config_entry)
+        return WebsiteCheckerOptionsFlowHandler()
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -38,6 +38,7 @@ class WebsiteCheckerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             url = user_input[CONF_URL]
 
+            # Set unique ID based on URL to prevent duplicates
             await self.async_set_unique_id(url.lower())
             self._abort_if_unique_id_configured()
 
@@ -70,16 +71,12 @@ class WebsiteCheckerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class WebsiteCheckerOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Website Checker options."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # Pull current values from options if modified previously, otherwise fall back to original entry data
+        # Retrieve settings from options if updated previously, falling back to original config_entry data
         current_data = {**self.config_entry.data, **self.config_entry.options}
 
         options_schema = vol.Schema(
