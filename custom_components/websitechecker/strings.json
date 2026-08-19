@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Website to Monitor",
+        "description": "Enter website parameters including a custom User-Agent if required.",
+        "data": {
+          "url": "Website URL",
+          "name": "Friendly Name",
+          "user_agent": "User-Agent Header",
+          "update_interval": "Update Interval (minutes)",
+          "verify_ssl": "Verify SSL Certificate"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This URL is already being monitored."
+    }
+  }
+}

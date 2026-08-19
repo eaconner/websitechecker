@@ -1,70 +1,95 @@
-# Websitechecker
+# Website Checker for Home Assistant
 
-Custom integration that checks if a website is reachable or not.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
 
-A website is considered OK when an HTTP request returned with a response code < 500.
-Or the other way around it is considered a problem if the HTTP request failed or returned a response code >= 500.
+A custom Home Assistant integration that monitors the HTTP status of specified websites and exposes them as `binary_sensor` entities. Perfect for keeping tabs on self-hosted services, personal blogs, or external sites directly from your dashboard.
 
-The sensor offers the following additional attributes:
+Based on the original work by [@mvdwetering](https://github.com/mvdwetering/websitechecker), this version includes direct **UI Configuration (Config Flow)** support and allows setting a custom **User-Agent** header per site.
 
-* url: The configured URL for this sensor
-* last_status: Status of last update. Some possible values are "200 - OK" or "Connection error". More error values exist.
-* last_error_status: Status of last error, allows to easily see what the last issue was if it came back already.
+> **NOTE:** Generative AI was used to aid in the creation, refactoring, and implementation of the UI Config Flow architecture for this repository.
 
-## Configuration examples
+---
 
-### Basic
+## Features
 
-```
-websitechecker:
-  websites:
-    - url: https://example.com
-      name: Optional friendly name
-    - url: http://does_not_exist.com
-    - url: http://192.168.178.4:9000  # URLs with non-standard ports also work
-```
+- **UI Config Flow**: Add, edit, and remove monitored sites directly from **Settings > Devices & Services**.
+- **Custom User-Agent**: Set custom HTTP `User-Agent` strings globally or per individual URL to bypass aggressive bot protection filters.
+- **Configurable Update Intervals**: Define how frequently each site is checked (in minutes).
+- **SSL Certificate Toggle**: Option to ignore SSL validation for internal or self-signed services.
+- **Detailed Attributes**: Entities track response state, last status code, and error details.
 
-### Advanced
-
-```
-websitechecker:
-  update_interval: 10  # Optional, value in minutes, defaults to 10
-  websites:
-    - url: https://example.com
-      name: Optional friendly name
-      verify_ssl: false  # Optional, default is true
-    - url: http://does_not_exist.com
-      update_interval: 5  # Optional, main `update_interval` used when not provided
-```
-
-## Notificatons
-
-Because the integration exposes normal sensors you can use Automations to get notified of issues. These type of automations are not specific for this integrations, so you can build automations as usual. 
-
-Below are some links to related Home Assistant documentation.
-
-* [Automating Home Assistant](https://www.home-assistant.io/docs/automation/)
-* [Home Assistant Mobile App notifications](https://companion.home-assistant.io/docs/notifications/notifications-basic)
-* [Notification Blueprints on Home Assistant forums](https://community.home-assistant.io/search?q=notifications%20%23blueprints-exchange)
-* [Home Assistant Core integrations that support notifications](https://www.home-assistant.io/integrations/#notifications)
-
-When you have questions for automations or looking for examples ask/search on one of the Home Assistant Community channels like [Forum](https://community.home-assistant.io/), [Discord](https://www.home-assistant.io/join-chat) or [Reddit](https://reddit.com/r/homeassistant).
+---
 
 ## Installation
 
-### Home Assistant Community Store (HACS)
+### Method 1: HACS (Recommended)
 
-*Recommended as you get notifications of updates*
+1. Open **HACS** in your Home Assistant UI.
+2. Click the three dots in the top right corner and select **Custom repositories**.
+3. Add `https://github.com/eaconner/websitechecker` with the category **Integration**.
+4. Click **Download** on the Website Checker integration card.
+5. Restart Home Assistant.
 
-HACS is a 3rd party downloader for Home Assistant to easily install and update custom integrations made by the community. More information and installation instructions can be found on their site https://hacs.xyz/
+### Method 2: Manual Installation
 
-* Add this repository https://github.com/mvdwetering/websitechecker to HACS as a "custom repository" with category "integration". This option can be found in the ⋮ menu
-* Install the integration from within HACS
-* Add a configuraton section to `configuration.yaml`
-* Restart Home Assistant
+1. Download the latest release source zip from [GitHub Releases](https://github.com/eaconner/websitechecker/releases).
+2. Extract the archive and copy the `custom_components/websitechecker` directory to your Home Assistant's `config/custom_components/` folder.
+3. Restart Home Assistant.
 
-### Manual
+---
 
-* Extract the Zip file in the `custom_components` directory
-* Add a configuraton section to `configuration.yaml`
-* Restart Home Assistant
+## Configuration
+
+### Setting Up via UI (Recommended)
+
+1. In Home Assistant, navigate to **Settings** > **Devices & Services**.
+2. Click **Add Integration** in the bottom right corner.
+3. Search for **Website Checker**.
+4. Fill in the form fields:
+
+| Field | Description | Default |
+| :--- | :--- | :--- |
+| **Website URL** | The full HTTP or HTTPS URL to monitor. | *Required* |
+| **Friendly Name** | Custom display name for the binary sensor entity. | URL string |
+| **User-Agent Header** | Custom HTTP `User-Agent` string sent with request. | `HomeAssistant-WebsiteChecker/2.0.0` |
+| **Update Interval** | Polling frequency in minutes. | `10` |
+| **Verify SSL Certificate** | Whether to enforce valid SSL/TLS certificates. | `true` |
+
+5. Click **Submit**. You can repeat this process for each website you wish to monitor.
+
+---
+
+## Binary Sensor Behavior
+
+The integration creates entities under the `binary_sensor` domain using the `problem` device class:
+
+- **`Off` (Clear/Normal)**: The site returned an HTTP status code lower than 500 (e.g., `200 OK`, `301 Redirect`, `404 Not Found`).
+- **`On` (Problem Detected)**: The site returned an HTTP status code $\ge 500$, or the connection timed out/failed.
+
+### Entity Attributes
+
+Each sensor exposes the following attributes for automations or custom dashboard cards:
+
+- `url`: Monitored target URL
+- `user_agent`: Configured User-Agent header
+- `last_status`: Detailed HTTP status string (e.g., `200 - OK`, `500 - HTTP Error`, `Connection Error`)
+- `last_error_status`: Last recorded error message
+
+---
+
+## Example Automations
+
+Send a notification via persistent notification when a site goes down:
+
+```yaml
+alias: "Notify when site is unreachable"
+trigger:
+  - platform: state
+    entity_id: binary_sensor.example_main_site
+    from: "off"
+    to: "on"
+action:
+  - service: notify.persistent_notification
+    data:
+      title: "Website Down Alert"
+      message: "Monitored website {{ state_attr(trigger.entity_id, 'url') }} is down. Status: {{ state_attr(trigger.entity_id, 'last_status') }}"

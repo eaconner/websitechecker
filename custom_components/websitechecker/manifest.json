@@ -3,12 +3,13 @@
   "name": "Websitechecker",
 
   "codeowners": [
-    "@mvdwetering"
+    "@mvdwetering",
+    "@eaconner"
   ],
+  "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/mvdwetering/websitechecker",
-  "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/mvdwetering/websitechecker/issues",
-  "requirements": [],
-  "version": "1.5.4"
+  "documentation": "https://github.com/eaconner/websitechecker",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/eaconner/websitechecker/issues",
+  "version": "2.0.0"
 }

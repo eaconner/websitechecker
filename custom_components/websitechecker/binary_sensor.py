@@ -1,122 +1,121 @@
-"""Platform for sensor integration."""
-
-import asyncio
+"""Binary sensor platform for websitechecker."""
 from datetime import timedelta
-from urllib.parse import urlparse
+import logging
 
 import aiohttp
+import async_timeout
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.const import CONF_URL, CONF_NAME
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_UPDATE_INTERVAL, CONF_VERIFY_SSL, CONF_WEBSITES, LOGGER
+from .const import (
+    CONF_NAME,
+    CONF_UPDATE_INTERVAL,
+    CONF_URL,
+    CONF_USER_AGENT,
+    CONF_VERIFY_SSL,
+    DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_USER_AGENT,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
-SCAN_INTERVAL = timedelta(minutes=1)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up websitechecker binary sensor from a config entry."""
+    data = entry.data
 
+    url = data[CONF_URL]
+    name = data.get(CONF_NAME, url)
+    user_agent = data.get(CONF_USER_AGENT, DEFAULT_USER_AGENT)
+    update_interval = data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    verify_ssl = data.get(CONF_VERIFY_SSL, True)
 
-async def async_setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the sensor platform."""
-    entities = []
-    main_update_interval = discovery_info.get(CONF_UPDATE_INTERVAL)
-    websites = discovery_info.get(CONF_WEBSITES)
-    websession = async_create_clientsession(
-        hass,
-        timeout=aiohttp.ClientTimeout(
-            # Use timeout of 9 to avoid "Update takes over 10 seconds" warning in HA logs
-            total=9,
-            connect=None,
-            sock_connect=None,
-            sock_read=None,
-        ),
+    sensor = WebsiteCheckerSensor(
+        hass, entry.entry_id, name, url, user_agent, update_interval, verify_ssl
     )
 
-    for website in websites:
-        url = website.get(CONF_URL)
-        name = website.get(CONF_NAME, urlparse(url).netloc)
-        update_interval = website.get(CONF_UPDATE_INTERVAL, main_update_interval)
-        verify_ssl = website.get(CONF_VERIFY_SSL)
-
-        entities.append(
-            WebsitecheckerSensor(websession, url, name, update_interval, verify_ssl)
-        )
-        LOGGER.debug(f"Added entity for url:{url}, name:{name}")
-    add_entities(entities, True)
+    async_add_entities([sensor], True)
 
 
-class WebsitecheckerSensor(BinarySensorEntity):
-    """Representation of a Sensor."""
+class WebsiteCheckerSensor(BinarySensorEntity):
+    """Representation of a WebsiteChecker binary sensor."""
 
-    def __init__(self, websession, url, name, update_interval, verify_ssl):
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self, hass, entry_id, name, url, user_agent, update_interval, verify_ssl
+    ):
         """Initialize the sensor."""
-        self._is_down = None
-        self._url = url
-        self._verify_ssl = verify_ssl
-        self._websession = websession
-        self._update_interval = update_interval
-        self._update_interval_remaining = 0  # Make sure to update at startup
-        self._last_status = "Not updated yet"
-        self._last_error_status = "None"
-
-        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
+        self._hass = hass
+        self._attr_unique_id = f"websitechecker_{entry_id}"
         self._attr_name = name
-        self._attr_unique_id = self._url
+        self._url = url
+        self._user_agent = user_agent
+        self._verify_ssl = verify_ssl
+        self._update_interval = timedelta(minutes=update_interval)
+
+        self._is_on = False
+        self._last_status = None
+        self._last_error_status = None
 
     @property
     def is_on(self):
-        """Return true if the binary sensor is on."""
-        return self._is_down
+        """Return True if the website is down/unreachable."""
+        return self._is_on
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._is_down is not None
+    def scan_interval(self):
+        """Scan interval duration."""
+        return self._update_interval
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Return the state attributes."""
+    def extra_state_attributes(self):
+        """Return entity specific attributes."""
         return {
             "url": self._url,
+            "user_agent": self._user_agent,
             "last_status": self._last_status,
             "last_error_status": self._last_error_status,
         }
 
     async def async_update(self):
-        """Do a request to the website"""
-        self._update_interval_remaining -= 1
-        if self._update_interval_remaining <= 0:
-            self._update_interval_remaining = self._update_interval
-            try:
-                LOGGER.debug("Start checking: %s", self._url)
-                async with self._websession.get(
-                    self._url, verify_ssl=self._verify_ssl
-                ) as resp:
-                    LOGGER.debug(
-                        "Done checking: %s, status = %s", self._url, resp.status
-                    )
-                    self._is_down = resp.status >= 500
-                    self._last_status = f"{resp.status} - {resp.reason}"
-            except aiohttp.ClientSSLError:
-                LOGGER.debug("ClientSSLError for %s", self._url)
-                self._is_down = True
-                self._last_status = "Client SSL error"
-                self._last_error_status = self._last_status
-            except aiohttp.ClientConnectionError:
-                LOGGER.debug("ConnectionError for %s", self._url)
-                self._is_down = True
-                self._last_status = "Connection error"
-                self._last_error_status = self._last_status
-            except asyncio.TimeoutError:
-                LOGGER.debug("Timeout for %s", self._url)
-                self._is_down = True
-                self._last_status = "Timeout"
-                self._last_error_status = self._last_status
-            except:
-                LOGGER.exception("Unhandled exception for %s", self._url)
-                self._is_down = True
-                self._last_status = "Unhandled error"
-                self._last_error_status = self._last_status
+        """Check site status via HTTP GET."""
+        headers = {"User-Agent": self._user_agent}
+        session = async_get_clientsession(self._hass, verify_ssl=self._verify_ssl)
+
+        try:
+            async with async_timeout.timeout(10):
+                async with session.get(self._url, headers=headers) as response:
+                    status_code = response.status
+                    if status_code < 500:
+                        self._is_on = False
+                        self._last_status = f"{status_code} - OK"
+                    else:
+                        self._is_on = True
+                        self._last_status = f"{status_code} - HTTP Error"
+                        self._last_error_status = self._last_status
+
+        except aiohttp.ClientConnectorError:
+            self._is_on = True
+            self._last_status = "Connection Error"
+            self._last_error_status = self._last_status
+        except aiohttp.ServerTimeoutError:
+            self._is_on = True
+            self._last_status = "Timeout"
+            self._last_error_status = self._last_status
+        except Exception as err:
+            _LOGGER.error("Error checking URL %s: %s", self._url, err)
+            self._is_on = True
+            self._last_status = "Error"
+            self._last_error_status = str(err)
