@@ -16,5 +16,18 @@
     "abort": {
       "already_configured": "This URL is already being monitored."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Website Checker Options",
+        "description": "Modify polling intervals, User-Agent header, or SSL settings.",
+        "data": {
+          "user_agent": "User-Agent Header",
+          "update_interval": "Update Interval (minutes)",
+          "verify_ssl": "Verify SSL Certificate"
+        }
+      }
+    }
   }
 }

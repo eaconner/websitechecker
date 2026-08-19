@@ -33,13 +33,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up websitechecker binary sensor from a config entry."""
-    data = entry.data
+    # Combine original data with updated options
+    config = {**entry.data, **entry.options}
 
-    url = data[CONF_URL]
-    name = data.get(CONF_NAME, url)
-    user_agent = data.get(CONF_USER_AGENT, DEFAULT_USER_AGENT)
-    update_interval = data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-    verify_ssl = data.get(CONF_VERIFY_SSL, True)
+    url = config[CONF_URL]
+    name = config.get(CONF_NAME, url)
+    user_agent = config.get(CONF_USER_AGENT, DEFAULT_USER_AGENT)
+    update_interval = config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    verify_ssl = config.get(CONF_VERIFY_SSL, True)
 
     sensor = WebsiteCheckerSensor(
         hass, entry.entry_id, name, url, user_agent, update_interval, verify_ssl
